@@ -67,6 +67,21 @@ namespace atg_scs {
                 m_matrix[b] = temp;
             }
 
+            // Direct pointer access for SIMD optimization
+            scs_force_inline double* getRowPtr(int row) {
+                assert(row >= 0 && row < m_height);
+                return m_matrix[row];
+            }
+            
+            scs_force_inline const double* getRowPtr(int row) const {
+                assert(row >= 0 && row < m_height);
+                return m_matrix[row];
+            }
+            
+            // Get raw data pointer (contiguous, row-major)
+            scs_force_inline double* getData() { return m_data; }
+            scs_force_inline const double* getData() const { return m_data; }
+
         protected:
             double **m_matrix;
             double *m_data;

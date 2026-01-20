@@ -3,6 +3,12 @@
 #include <cmath>
 #include <assert.h>
 
+// ARM64 NEON optimization for dot products
+#if defined(__aarch64__) || defined(_M_ARM64)
+#include <arm_neon.h>
+#define USE_NEON_DOUBLE 1
+#endif
+
 atg_scs::GaussSeidelSleSolver::GaussSeidelSleSolver()
     : atg_scs::SleSolver(true)
 {
@@ -97,6 +103,38 @@ double atg_scs::GaussSeidelSleSolver::solveIteration(
 
     for (int i = 0; i < n; ++i) {
         double s0 = 0.0, s1 = 0.0;
+        
+#if USE_NEON_DOUBLE
+        const double* left_row = left.getRowPtr(i);
+        const double* k_next_data = k_next->getData();
+        const double* k_data = k->getData();
+        
+        // Vectorized sum for j < i
+        int j = 0;
+        float64x2_t sum0_vec = vdupq_n_f64(0.0);
+        for (; j + 1 < i; j += 2) {
+            float64x2_t left_vec = vld1q_f64(&left_row[j]);
+            float64x2_t k_vec = vld1q_f64(&k_next_data[j]);
+            sum0_vec = vfmaq_f64(sum0_vec, left_vec, k_vec);
+        }
+        s0 = vaddvq_f64(sum0_vec);
+        for (; j < i; ++j) {
+            s0 += left_row[j] * k_next_data[j];
+        }
+        
+        // Vectorized sum for j > i  
+        j = i + 1;
+        float64x2_t sum1_vec = vdupq_n_f64(0.0);
+        for (; j + 1 < n; j += 2) {
+            float64x2_t left_vec = vld1q_f64(&left_row[j]);
+            float64x2_t k_vec = vld1q_f64(&k_data[j]);
+            sum1_vec = vfmaq_f64(sum1_vec, left_vec, k_vec);
+        }
+        s1 = vaddvq_f64(sum1_vec);
+        for (; j < n; ++j) {
+            s1 += left_row[j] * k_data[j];
+        }
+#else
         for (int j = 0; j < i; ++j) {
             s0 += left.get(j, i) * k_next->get(0, j);
         }
@@ -104,6 +142,7 @@ double atg_scs::GaussSeidelSleSolver::solveIteration(
         for (int j = i + 1; j < n; ++j) {
             s1 += left.get(j, i) * k->get(0, j);
         }
+#endif
 
         const double k_next_i =
             (1 / left.get(i, i)) * (right.get(0, i) - s0 - s1);
@@ -132,6 +171,38 @@ double atg_scs::GaussSeidelSleSolver::solveIteration(
 
     for (int i = 0; i < n; ++i) {
         double s0 = 0.0, s1 = 0.0;
+        
+#if USE_NEON_DOUBLE
+        const double* left_row = left.getRowPtr(i);
+        const double* k_next_data = k_next->getData();
+        const double* k_data = k->getData();
+        
+        // Vectorized sum for j < i
+        int j = 0;
+        float64x2_t sum0_vec = vdupq_n_f64(0.0);
+        for (; j + 1 < i; j += 2) {
+            float64x2_t left_vec = vld1q_f64(&left_row[j]);
+            float64x2_t k_vec = vld1q_f64(&k_next_data[j]);
+            sum0_vec = vfmaq_f64(sum0_vec, left_vec, k_vec);
+        }
+        s0 = vaddvq_f64(sum0_vec);
+        for (; j < i; ++j) {
+            s0 += left_row[j] * k_next_data[j];
+        }
+        
+        // Vectorized sum for j > i  
+        j = i + 1;
+        float64x2_t sum1_vec = vdupq_n_f64(0.0);
+        for (; j + 1 < n; j += 2) {
+            float64x2_t left_vec = vld1q_f64(&left_row[j]);
+            float64x2_t k_vec = vld1q_f64(&k_data[j]);
+            sum1_vec = vfmaq_f64(sum1_vec, left_vec, k_vec);
+        }
+        s1 = vaddvq_f64(sum1_vec);
+        for (; j < n; ++j) {
+            s1 += left_row[j] * k_data[j];
+        }
+#else
         for (int j = 0; j < i; ++j) {
             s0 += left.get(j, i) * k_next->get(0, j);
         }
@@ -139,6 +210,7 @@ double atg_scs::GaussSeidelSleSolver::solveIteration(
         for (int j = i + 1; j < n; ++j) {
             s1 += left.get(j, i) * k->get(0, j);
         }
+#endif
 
         const double k_next_i =
             (1 / left.get(i, i)) * (right.get(0, i) - s0 - s1);
