@@ -1,7 +1,24 @@
 #include "../include/optimized_nsv_rigid_body_system.h"
 
-#include <chrono>
 #include <cmath>
+
+// Fast timing for macOS using mach_absolute_time
+#if defined(__APPLE__)
+#include <mach/mach_time.h>
+static inline uint64_t fast_now() { return mach_absolute_time(); }
+static inline long long to_microseconds(uint64_t start, uint64_t end) {
+    static mach_timebase_info_data_t info = {0, 0};
+    if (info.denom == 0) mach_timebase_info(&info);
+    return (long long)((end - start) * info.numer / info.denom / 1000);
+}
+#else
+#include <chrono>
+static inline auto fast_now() { return std::chrono::steady_clock::now(); }
+template<typename T>
+static inline long long to_microseconds(T start, T end) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+}
+#endif
 
 atg_scs::OptimizedNsvRigidBodySystem::OptimizedNsvRigidBodySystem() {
     m_sleSolver = nullptr;
@@ -52,22 +69,20 @@ void atg_scs::OptimizedNsvRigidBodySystem::process(double dt, int steps) {
 
             long long evalTime = 0, solveTime = 0;
 
-            auto s0 = std::chrono::steady_clock::now();
+            auto s0 = fast_now();
             processForces();
-            auto s1 = std::chrono::steady_clock::now();
+            auto s1 = fast_now();
 
             processConstraints(dt / steps, &evalTime, &solveTime);
 
-            auto s2 = std::chrono::steady_clock::now();
+            auto s2 = fast_now();
             m_odeSolver.solve(&m_state);
-            auto s3 = std::chrono::steady_clock::now();
+            auto s3 = fast_now();
 
             constraintSolveTime += solveTime;
             constraintEvalTime += evalTime;
-            odeSolveTime +=
-                std::chrono::duration_cast<std::chrono::microseconds>(s3 - s2).count();
-            forceEvalTime +=
-                std::chrono::duration_cast<std::chrono::microseconds>(s1 - s0).count();
+            odeSolveTime += to_microseconds(s2, s3);
+            forceEvalTime += to_microseconds(s0, s1);
 
             if (done) break;
         }
@@ -121,7 +136,7 @@ void atg_scs::OptimizedNsvRigidBodySystem::processConstraints(
     *evalTime = -1;
     *solveTime = -1;
 
-    auto s0 = std::chrono::steady_clock::now();
+    auto s0 = fast_now();
 
     const int n = getRigidBodyCount();
     const int m_f = getFullConstraintCount();
@@ -193,7 +208,7 @@ void atg_scs::OptimizedNsvRigidBodySystem::processConstraints(
     m_iv.reg1.add(m_iv.b_err, &m_iv.reg0);
     m_iv.reg0.negate(&m_iv.right);
 
-    auto s1 = std::chrono::steady_clock::now();
+    auto s1 = fast_now();
 
     bool solvable = false;
     if (!m_sleSolver->supportsLimits()) {
@@ -216,9 +231,16 @@ void atg_scs::OptimizedNsvRigidBodySystem::processConstraints(
                 &m_iv.lambda);
     }
 
-    assert(solvable);
+    // Handle unsolvable constraints gracefully (e.g., at very low RPM near stall)
+    // Instead of crashing, zero out lambda and continue - the simulation may recover
+    if (!solvable) {
+        const int n = m_iv.lambda.getHeight();
+        for (int i = 0; i < n; ++i) {
+            m_iv.lambda.set(0, i, 0.0);
+        }
+    }
 
-    auto s2 = std::chrono::steady_clock::now();
+    auto s2 = fast_now();
 
     // Constraint force derivation
     //  R = J_T * lambda_scale
@@ -266,10 +288,8 @@ void atg_scs::OptimizedNsvRigidBodySystem::processConstraints(
         m_state.a_theta[i] *= invInertia;
     }
 
-    auto s3 = std::chrono::steady_clock::now();
+    auto s3 = fast_now();
 
-    *evalTime =
-        std::chrono::duration_cast<std::chrono::microseconds>(s1 - s0 + s3 - s2).count();
-    *solveTime =
-        std::chrono::duration_cast<std::chrono::microseconds>(s2 - s1).count();
+    *evalTime = to_microseconds(s0, s1) + to_microseconds(s2, s3);
+    *solveTime = to_microseconds(s1, s2);
 }

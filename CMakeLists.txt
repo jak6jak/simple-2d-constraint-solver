@@ -47,6 +47,7 @@ add_library(simple-2d-constraint-solver STATIC
     src/gravity_force_generator.cpp
     src/link_constraint.cpp
     src/gaussian_elimination_sle_solver.cpp
+    src/cholesky_sle_solver.cpp
     src/spring.cpp
     src/line_constraint.cpp
     src/constant_speed_motor.cpp
@@ -80,6 +81,7 @@ add_library(simple-2d-constraint-solver STATIC
     include/gravity_force_generator.h
     include/link_constraint.h
     include/gaussian_elimination_sle_solver.h
+    include/cholesky_sle_solver.h
     include/spring.h
     include/line_constraint.h
     include/constant_speed_motor.h
