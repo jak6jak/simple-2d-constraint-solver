@@ -142,26 +142,57 @@ namespace atg_scs {
 
                 target->initialize(b_T.m_height, m_height);
 
+                // Optimized version: pre-fetch block data and use direct pointer access
                 for (int i = 0; i < m_height; ++i) {
+                    const double* row_i = m_matrix[i];
+                    const uint8_t* blockData_i = &m_blockData[i * T_Entries];
+                    double* targetRow = target->getRowPtr(i);
+                    
                     for (int j = 0; j < b_T.m_height; ++j) {
+                        const double* row_j = b_T.m_matrix[j];
+                        const uint8_t* blockData_j = &b_T.m_blockData[j * T_Entries];
+                        
                         double dot = 0;
-                        for (int k = 0; k < T_Entries; ++k) {
-                            const uint8_t block0 = m_blockData[i * T_Entries + k];
-                            if (block0 == 0xFF) continue;
-
-                            for (int l = 0; l < T_Entries; ++l) {
-                                const uint8_t block1 = b_T.m_blockData[j * T_Entries + l];
-                                if (block0 == block1) {
-                                    for (int m = 0; m < T_Stride; ++m) {
-                                        dot +=
-                                            m_matrix[i][k * T_Stride + m]
-                                            * b_T.m_matrix[j][l * T_Stride + m];
-                                    }
-                                }
+                        
+                        // Unrolled for T_Entries=2 (common case)
+                        // Entry k=0
+                        const uint8_t block0_0 = blockData_i[0];
+                        if (block0_0 != 0xFF) {
+                            const uint8_t block1_0 = blockData_j[0];
+                            const uint8_t block1_1 = blockData_j[1];
+                            
+                            if (block0_0 == block1_0) {
+                                // Unrolled dot product for T_Stride=3
+                                dot += row_i[0] * row_j[0]
+                                     + row_i[1] * row_j[1]
+                                     + row_i[2] * row_j[2];
+                            }
+                            if (block0_0 == block1_1) {
+                                dot += row_i[0] * row_j[3]
+                                     + row_i[1] * row_j[4]
+                                     + row_i[2] * row_j[5];
+                            }
+                        }
+                        
+                        // Entry k=1
+                        const uint8_t block0_1 = blockData_i[1];
+                        if (block0_1 != 0xFF) {
+                            const uint8_t block1_0 = blockData_j[0];
+                            const uint8_t block1_1 = blockData_j[1];
+                            
+                            if (block0_1 == block1_0) {
+                                dot += row_i[3] * row_j[0]
+                                     + row_i[4] * row_j[1]
+                                     + row_i[5] * row_j[2];
+                            }
+                            if (block0_1 == block1_1) {
+                                dot += row_i[3] * row_j[3]
+                                     + row_i[4] * row_j[4]
+                                     + row_i[5] * row_j[5];
                             }
                         }
 
-                        target->set(j, i, dot);
+                        targetRow[j] = dot;
                     }
                 }
             }

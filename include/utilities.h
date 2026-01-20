@@ -1,8 +1,8 @@
 #ifndef ATG_SIMPLE_2D_CONSTRAINT_SOLVER_UTILITIES_H
 #define ATG_SIMPLE_2D_CONSTRAINT_SOLVER_UTILITIES_H
 
-#if defined(__APPLE__)
-#define scs_force_inline inline
+#if defined(__APPLE__) || defined(__clang__) || defined(__GNUC__)
+#define scs_force_inline __attribute__((always_inline)) inline
 #else
 #define scs_force_inline __forceinline
 #endif
